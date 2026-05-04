@@ -11,6 +11,7 @@ from .io_utils import load_problem, save_problem, save_solution
 from .models import ProblemInstance, SolveResult
 from .solvers.genetic import genetic_solve
 from .solvers.greedy import greedy_solve
+from .plotting import save_ga_convergence_plot
 
 
 @dataclass
@@ -131,8 +132,21 @@ def solve_all_algorithms(state: AppState) -> None:
         tournament_size=tournament_size,
         seed=seed,
     )
+
     state.results["genetic"] = genetic
     print(f"Результат роботи генетичного алгоритму: значення ЦФ {genetic.total_cost:.4f}.")
+
+    history_best = genetic.extra.get("history_best", [])
+    history_iteration_best = genetic.extra.get("history_iteration_best", [])
+
+    if history_best:
+        plot_path = Path("output") / "ga_convergence.png"
+        save_ga_convergence_plot(
+            history_best=history_best,
+            history_iteration_best=history_iteration_best,
+            path=plot_path,
+        )
+        print(f"Графік збіжності генетичного алгоритму збережено: {plot_path}")
 
     print_solutions_summary(state.results)
 

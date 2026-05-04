@@ -11,6 +11,7 @@ from .input_utils import read_float, read_int
 from .models import ProblemInstance
 from .solvers.genetic import genetic_solve
 from .solvers.greedy import greedy_solve
+from .plotting import save_single_series_plot, save_two_series_plot
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -53,9 +54,9 @@ def _parse_int_values(raw: str, default: list[int]) -> list[int]:
     return [int(x) for x in raw.split()]
 
 
-def _save_csv(filename_prefix: str, rows: list[dict]) -> None:
+def _save_csv(filename_prefix: str, rows: list[dict]) -> Path | None:
     if not rows:
-        return
+        return None
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -67,6 +68,7 @@ def _save_csv(filename_prefix: str, rows: list[dict]) -> None:
         writer.writerows(rows)
 
     print(f"\nРезультати збережено у файл: {path}")
+    return path
 
 
 def _generate_task_by_size(size: int, params: dict, seed: int) -> ProblemInstance:
@@ -150,7 +152,39 @@ def max_stall_experiment() -> None:
             f"{row['avg_time_sec']:<13.6f}"
         )
 
-    _save_csv("experiment_1_max_stall", rows)
+    csv_path = _save_csv("experiment_1_max_stall", rows)
+
+    if csv_path is not None:
+        base = csv_path.with_suffix("")
+
+        save_single_series_plot(
+            x=[row["max_stall_gen"] for row in rows],
+            y=[row["avg_cost"] for row in rows],
+            xlabel="MaxStallGen",
+            ylabel="Середнє значення ЦФ",
+            title="Вплив MaxStallGen на середнє значення ЦФ",
+            path=base.with_name(base.name + "_cost.png"),
+        )
+
+        save_single_series_plot(
+            x=[row["max_stall_gen"] for row in rows],
+            y=[row["avg_time_sec"] for row in rows],
+            xlabel="MaxStallGen",
+            ylabel="Середній час, с",
+            title="Вплив MaxStallGen на час роботи",
+            path=base.with_name(base.name + "_time.png"),
+        )
+
+        save_single_series_plot(
+            x=[row["max_stall_gen"] for row in rows],
+            y=[row["avg_generations"] for row in rows],
+            xlabel="MaxStallGen",
+            ylabel="Середня кількість поколінь",
+            title="Вплив MaxStallGen на кількість поколінь",
+            path=base.with_name(base.name + "_generations.png"),
+        )
+
+        print("Графіки експерименту збережено в папку output.")
 
 
 def mutation_experiment() -> None:
@@ -204,7 +238,30 @@ def mutation_experiment() -> None:
             f"{row['avg_time_sec']:<13.6f}"
         )
 
-    _save_csv("experiment_2_mutation", rows)
+    csv_path = _save_csv("experiment_2_mutation", rows)
+
+    if csv_path is not None:
+        base = csv_path.with_suffix("")
+
+        save_single_series_plot(
+            x=[row["mutation_prob"] for row in rows],
+            y=[row["avg_cost"] for row in rows],
+            xlabel="Ймовірність мутації",
+            ylabel="Середнє значення ЦФ",
+            title="Вплив ймовірності мутації на середнє значення ЦФ",
+            path=base.with_name(base.name + "_cost.png"),
+        )
+
+        save_single_series_plot(
+            x=[row["mutation_prob"] for row in rows],
+            y=[row["avg_time_sec"] for row in rows],
+            xlabel="Ймовірність мутації",
+            ylabel="Середній час, с",
+            title="Вплив ймовірності мутації на час роботи",
+            path=base.with_name(base.name + "_time.png"),
+        )
+
+        print("Графіки експерименту збережено в папку output.")
 
 
 def _dimension_trials(
@@ -212,7 +269,7 @@ def _dimension_trials(
     print_header: Callable[[], None],
     print_row: Callable[[dict], None],
     filename_prefix: str,
-) -> None:
+) -> tuple[list[dict], Path | None]:
     n_from, n_to, step, params, r_count, ga_params = _ask_dimension_experiment_params()
     rows: list[dict] = []
 
@@ -265,7 +322,8 @@ def _dimension_trials(
         rows.append(row)
         print_row(row)
 
-    _save_csv(filename_prefix, rows)
+    csv_path = _save_csv(filename_prefix, rows)
+    return rows, csv_path
 
 
 def dimension_time_experiment() -> None:
@@ -282,7 +340,24 @@ def dimension_time_experiment() -> None:
             f"{row['avg_ga_time_sec']:<15.6f}"
         )
 
-    _dimension_trials("time", header, row_printer, "experiment_3_dimension_time")
+    rows, csv_path = _dimension_trials("time", header, row_printer, "experiment_3_dimension_time")
+
+    if csv_path is not None:
+        base = csv_path.with_suffix("")
+
+        save_two_series_plot(
+            x=[row["N"] for row in rows],
+            y1=[row["avg_greedy_time_sec"] for row in rows],
+            y2=[row["avg_ga_time_sec"] for row in rows],
+            label1="Жадібний алгоритм",
+            label2="Генетичний алгоритм",
+            xlabel="Розмірність задачі N",
+            ylabel="Середній час, с",
+            title="Вплив розмірності задачі на час роботи алгоритмів",
+            path=base.with_name(base.name + "_plot.png"),
+        )
+
+        print("Графік експерименту збережено в папку output.")
 
 
 def dimension_accuracy_experiment() -> None:
@@ -301,7 +376,42 @@ def dimension_accuracy_experiment() -> None:
             f"{row['ga_win_rate']:<13.2f}"
         )
 
-    _dimension_trials("accuracy", header, row_printer, "experiment_4_dimension_accuracy")
+    rows, csv_path = _dimension_trials("accuracy", header, row_printer, "experiment_4_dimension_accuracy")
+
+    if csv_path is not None:
+        base = csv_path.with_suffix("")
+    
+        save_two_series_plot(
+            x=[row["N"] for row in rows],
+            y1=[row["avg_greedy_cost"] for row in rows],
+            y2=[row["avg_ga_cost"] for row in rows],
+            label1="Жадібний алгоритм",
+            label2="Генетичний алгоритм",
+            xlabel="Розмірність задачі N",
+            ylabel="Середнє значення ЦФ",
+            title="Вплив розмірності задачі на значення ЦФ",
+            path=base.with_name(base.name + "_cost.png"),
+        )
+    
+        save_single_series_plot(
+            x=[row["N"] for row in rows],
+            y=[row["avg_gap_percent"] for row in rows],
+            xlabel="Розмірність задачі N",
+            ylabel="Середній relative gap, %",
+            title="Середня відносна різниця між алгоритмами",
+            path=base.with_name(base.name + "_gap.png"),
+        )
+    
+        save_single_series_plot(
+            x=[row["N"] for row in rows],
+            y=[row["ga_win_rate"] * 100 for row in rows],
+            xlabel="Розмірність задачі N",
+            ylabel="Win-rate ГА, %",
+            title="Частка перемог генетичного алгоритму",
+            path=base.with_name(base.name + "_win_rate.png"),
+        )
+    
+        print("Графіки експерименту збережено в папку output.")
 
 
 def experiments_menu() -> None:
