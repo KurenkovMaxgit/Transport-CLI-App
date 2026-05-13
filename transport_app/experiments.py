@@ -303,7 +303,9 @@ def _dimension_trials(
             ga_times.append(ga.runtime_sec)
 
             if greedy.total_cost != 0:
-                gaps.append((ga.total_cost - greedy.total_cost) / greedy.total_cost * 100)
+                gaps.append(
+                    (ga.total_cost - greedy.total_cost) / greedy.total_cost * 100
+                )
             else:
                 gaps.append(0.0)
 
@@ -330,8 +332,8 @@ def dimension_time_experiment() -> None:
     print("\nЕксперимент 3: вплив розмірності задачі на час роботи алгоритмів")
 
     def header() -> None:
-        print("\nN    avg time Greedy, s   avg time GA, s")
-        print("-" * 45)
+        print("\nN    MaxStallGen   avg time Greedy, s   avg time GA, s")
+        print("-" * 62)
 
     def row_printer(row: dict) -> None:
         print(
@@ -376,11 +378,13 @@ def dimension_accuracy_experiment() -> None:
             f"{row['ga_win_rate']:<13.2f}"
         )
 
-    rows, csv_path = _dimension_trials("accuracy", header, row_printer, "experiment_4_dimension_accuracy")
+    rows, csv_path = _dimension_trials(
+        "accuracy", header, row_printer, "experiment_4_dimension_accuracy"
+    )
 
     if csv_path is not None:
         base = csv_path.with_suffix("")
-    
+
         save_two_series_plot(
             x=[row["N"] for row in rows],
             y1=[row["avg_greedy_cost"] for row in rows],
@@ -392,7 +396,7 @@ def dimension_accuracy_experiment() -> None:
             title="Вплив розмірності задачі на значення ЦФ",
             path=base.with_name(base.name + "_cost.png"),
         )
-    
+
         save_single_series_plot(
             x=[row["N"] for row in rows],
             y=[row["avg_gap_percent"] for row in rows],
@@ -401,7 +405,7 @@ def dimension_accuracy_experiment() -> None:
             title="Середня відносна різниця між алгоритмами",
             path=base.with_name(base.name + "_gap.png"),
         )
-    
+
         save_single_series_plot(
             x=[row["N"] for row in rows],
             y=[row["ga_win_rate"] * 100 for row in rows],
@@ -410,7 +414,7 @@ def dimension_accuracy_experiment() -> None:
             title="Частка перемог генетичного алгоритму",
             path=base.with_name(base.name + "_win_rate.png"),
         )
-    
+
         print("Графіки експерименту збережено в папку output.")
 
 
@@ -425,17 +429,20 @@ def experiments_menu() -> None:
         choice = input("Ваш вибір: ").strip()
 
         try:
-            if choice == "1":
-                max_stall_experiment()
-            elif choice == "2":
-                mutation_experiment()
-            elif choice == "3":
-                dimension_time_experiment()
-            elif choice == "4":
-                dimension_accuracy_experiment()
-            elif choice == "0":
-                return
-            else:
-                print("Невідомий пункт меню.")
+            match choice:
+                case "":
+                    continue
+                case "1":
+                    max_stall_experiment()
+                case "2":
+                    mutation_experiment()
+                case "3":
+                    dimension_time_experiment()
+                case "4":
+                    dimension_accuracy_experiment()
+                case "0":
+                    return
+                case _:
+                    print("Невідомий пункт меню.")
         except Exception as exc:
             print(f"Помилка під час експерименту: {exc}")

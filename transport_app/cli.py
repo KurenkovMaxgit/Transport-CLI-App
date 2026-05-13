@@ -103,7 +103,9 @@ def input_data_menu(state: AppState) -> None:
 
 def solve_all_algorithms(state: AppState) -> None:
     if state.problem is None:
-        print(f"{Color.RED}Немає даних задачі. Спочатку введіть або згенеруйте задачу.{Color.RESET}")
+        print(
+            f"{Color.RED}Немає даних задачі. Спочатку введіть або згенеруйте задачу.{Color.RESET}"
+        )
         return
 
     print_header("Розв'язок задачі всіма алгоритмами")
@@ -134,7 +136,9 @@ def solve_all_algorithms(state: AppState) -> None:
     )
 
     state.results["genetic"] = genetic
-    print(f"Результат роботи генетичного алгоритму: значення ЦФ {genetic.total_cost:.4f}.")
+    print(
+        f"Результат роботи генетичного алгоритму: значення ЦФ {genetic.total_cost:.4f}."
+    )
 
     history_best = genetic.extra.get("history_best", [])
     history_iteration_best = genetic.extra.get("history_iteration_best", [])
@@ -171,29 +175,35 @@ def show_solutions(state: AppState) -> None:
         print("0 - Повернутися")
         choice = input("Ваш вибір: ").strip()
 
-        if choice == "1":
-            print_solutions_summary(state.results)
-        elif choice == "2":
-            if "greedy" in state.results:
-                print_solution(state.results["greedy"])
-            else:
-                print("Жадібний алгоритм ще не запускався.")
-        elif choice == "3":
-            if "genetic" in state.results:
-                print_solution(state.results["genetic"])
-            else:
-                print("Генетичний алгоритм ще не запускався.")
-        elif choice == "0":
-            return
-        else:
-            print("Невідомий пункт меню.")
+        match choice:
+            case "":
+                continue
+            case "1":
+                print_solutions_summary(state.results)
+            case "2":
+                if "greedy" in state.results:
+                    print_solution(state.results["greedy"])
+                else:
+                    print("Жадібний алгоритм ще не запускався.")
+            case "3":
+                if "genetic" in state.results:
+                    print_solution(state.results["genetic"])
+                else:
+                    print("Генетичний алгоритм ще не запускався.")
+            case "0":
+                return
+            case _:
+                print("Невідомий пункт меню.")
 
 
 def save_current_problem(state: AppState) -> None:
     if state.problem is None:
         print(f"{Color.RED}Немає даних задачі.{Color.RESET}")
         return
-    path = input("Шлях для збереження задачі [data/problem.json]: ").strip() or "data/problem.json"
+    path = (
+        input("Шлях для збереження задачі [data/problem.json]: ").strip()
+        or "data/problem.json"
+    )
     save_problem(state.problem, path)
     print(f"{Color.GREEN}Задачу збережено: {Path(path).resolve()}{Color.RESET}")
 
@@ -203,7 +213,10 @@ def save_current_solutions(state: AppState) -> None:
         print(f"{Color.RED}Немає розв'язків для збереження.{Color.RESET}")
         return
 
-    folder = Path(input("Папка для збереження розв'язків [data/results]: ").strip() or "data/results")
+    folder = Path(
+        input("Папка для збереження розв'язків [data/results]: ").strip()
+        or "data/results"
+    )
     folder.mkdir(parents=True, exist_ok=True)
 
     for key, result in state.results.items():
@@ -220,24 +233,27 @@ def run_cli() -> None:
         choice = input("Ваш вибір: ").strip()
 
         try:
-            if choice == "1":
-                input_data_menu(state)
-            elif choice == "2":
-                solve_all_algorithms(state)
-            elif choice == "3":
-                experiments_menu()
-            elif choice == "4":
-                show_problem_data(state)
-            elif choice == "5":
-                show_solutions(state)
-            elif choice == "6":
-                save_current_problem(state)
-            elif choice == "7":
-                save_current_solutions(state)
-            elif choice == "0":
-                print("Роботу завершено.")
-                return
-            else:
-                print(f"{Color.RED}Невідомий пункт меню.{Color.RESET}")
+            match choice:
+                case "":
+                    continue
+                case "1":
+                    input_data_menu(state)
+                case "2":
+                    solve_all_algorithms(state)
+                case "3":
+                    experiments_menu()
+                case "4":
+                    show_problem_data(state)
+                case "5":
+                    show_solutions(state)
+                case "6":
+                    save_current_problem(state)
+                case "7":
+                    save_current_solutions(state)
+                case "0":
+                    print("Роботу завершено.")
+                    return
+                case _:
+                    print(f"{Color.RED}Невідомий пункт меню.{Color.RESET}")
         except Exception as exc:
             print(f"{Color.RED}Помилка: {exc}{Color.RESET}")
