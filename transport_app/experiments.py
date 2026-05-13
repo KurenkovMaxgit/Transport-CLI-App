@@ -9,7 +9,7 @@ from typing import Callable
 from .generator import generate_problem
 from .input_utils import read_float, read_int
 from .models import ProblemInstance
-from .solvers.genetic import genetic_solve
+from .solvers.genetic import genetic_solve, estimate_max_stall_gen
 from .solvers.greedy import greedy_solve
 from .plotting import save_single_series_plot, save_two_series_plot
 
@@ -31,14 +31,55 @@ def _ask_generator_params() -> dict:
     }
 
 
-def _ask_ga_params(default_max_stall_gen: int = 20) -> dict:
+def _print_recommended_max_stall_for_dimension(size: int) -> int:
+    recommended = estimate_max_stall_gen(size, size)
+
+    print(
+        f"Рекомендоване значення MaxStallGen для N={size} "
+        f"(за формулою α·(m+n)·log₂(m+n)): {recommended}"
+    )
+
+    return recommended
+
+
+def _make_default_stall_values(recommended: int) -> list[int]:
+    values = {
+        max(5, int(round(recommended * 0.25))),
+        max(5, int(round(recommended * 0.50))),
+        max(5, recommended),
+        max(5, int(round(recommended * 1.50))),
+        max(5, int(round(recommended * 2.00))),
+    }
+
+    return sorted(values)
+
+
+def _ask_ga_params(
+    default_max_stall_gen: int,
+    allow_auto_max_stall: bool = False,
+) -> dict:
     print("\nПараметри генетичного алгоритму")
+
+    population_size = read_int("Розмір популяції", 2, 40)
+
+    if allow_auto_max_stall:
+        print(
+            "Для MaxStallGen можна ввести 0, тоді значення буде автоматично рахуватися для кожної розмірності N."
+        )
+        max_stall_gen = read_int("MaxStallGen", 0, 0)
+    else:
+        max_stall_gen = read_int("MaxStallGen", 1, default_max_stall_gen)
+
+    crossover_prob = read_float("Ймовірність кросовера", 0.0, 0.8)
+    mutation_prob = read_float("Ймовірність мутації", 0.0, 0.15)
+    tournament_size = read_int("Розмір турніру", 1, 3)
+
     return {
-        "population_size": read_int("Розмір популяції", 2, 40),
-        "max_stall_gen": read_int("MaxStallGen", 1, default_max_stall_gen),
-        "crossover_prob": read_float("Ймовірність кросовера", 0.0, 0.8),
-        "mutation_prob": read_float("Ймовірність мутації", 0.0, 0.15),
-        "tournament_size": read_int("Розмір турніру", 1, 3),
+        "population_size": population_size,
+        "max_stall_gen": max_stall_gen,
+        "crossover_prob": crossover_prob,
+        "mutation_prob": mutation_prob,
+        "tournament_size": tournament_size,
     }
 
 
@@ -91,15 +132,28 @@ def _ask_dimension_experiment_params() -> tuple[int, int, int, dict, int, dict]:
     n_from = read_int("Початкова розмірність N, де m=n=N", 1, 3)
     n_to = read_int("Кінцева розмірність N", n_from, 8)
     step = read_int("Крок", 1, 1)
+
+    print()
+    _print_recommended_max_stall_for_dimension(n_from)
+
+    if n_to != n_from:
+        _print_recommended_max_stall_for_dimension(n_to)
+
     generator_params = _ask_generator_params()
     r_count = read_int("Кількість задач для кожної розмірності R", 1, 5)
-    ga_params = _ask_ga_params()
+
+    ga_params = _ask_ga_params(
+        default_max_stall_gen=0,
+        allow_auto_max_stall=True,
+    )
+
     return n_from, n_to, step, generator_params, r_count, ga_params
 
 
 def max_stall_experiment() -> None:
     print("\nЕксперимент 1: визначення параметра умови завершення MaxStallGen")
     size = read_int("Розмірність задачі N, де m=n=N", 1, 5)
+    recommended_max_stall = _print_recommended_max_stall_for_dimension(size)
     params = _ask_generator_params()
     r_count = read_int("Кількість задач у вибірці R", 1, 5)
 
@@ -108,8 +162,13 @@ def max_stall_experiment() -> None:
     mutation_prob = read_float("Ймовірність мутації", 0.0, 0.15)
     tournament_size = read_int("Розмір турніру", 1, 3)
 
-    raw_values = input("Значення MaxStallGen через пробіл [5 10 15 20 30]: ").strip()
-    stall_values = _parse_int_values(raw_values, [5, 10, 15, 20, 30])
+    default_stall_values = _make_default_stall_values(recommended_max_stall)
+    default_stall_text = " ".join(str(value) for value in default_stall_values)
+
+    raw_values = input(
+        f"Значення MaxStallGen через пробіл [{default_stall_text}]: "
+    ).strip()
+    stall_values = _parse_int_values(raw_values, default_stall_values)
 
     rows: list[dict] = []
 
@@ -137,6 +196,8 @@ def max_stall_experiment() -> None:
             generations.append(float(result.extra.get("generations", 0)))
 
         row = {
+            "N": size,
+            "recommended_max_stall_gen": recommended_max_stall,
             "max_stall_gen": max_stall_gen,
             "avg_cost": round(statistics.mean(costs), 6),
             "std_cost": round(statistics.pstdev(costs) if len(costs) > 1 else 0.0, 6),
@@ -190,11 +251,12 @@ def max_stall_experiment() -> None:
 def mutation_experiment() -> None:
     print("\nЕксперимент 2: вплив ймовірності мутації на ефективність ГА")
     size = read_int("Розмірність задачі N, де m=n=N", 1, 5)
+    recommended_max_stall = _print_recommended_max_stall_for_dimension(size)
     params = _ask_generator_params()
     r_count = read_int("Кількість задач у вибірці R", 1, 5)
 
     population_size = read_int("Розмір популяції", 2, 40)
-    max_stall_gen = read_int("MaxStallGen", 1, 20)
+    max_stall_gen = read_int("MaxStallGen", 1, recommended_max_stall)
     crossover_prob = read_float("Ймовірність кросовера", 0.0, 0.8)
     tournament_size = read_int("Розмір турніру", 1, 3)
 
@@ -225,6 +287,9 @@ def mutation_experiment() -> None:
             times.append(result.runtime_sec)
 
         row = {
+            "N": size,
+            "recommended_max_stall_gen": recommended_max_stall,
+            "max_stall_gen": max_stall_gen,
             "mutation_prob": mutation_prob,
             "avg_cost": round(statistics.mean(costs), 6),
             "std_cost": round(statistics.pstdev(costs) if len(costs) > 1 else 0.0, 6),
@@ -283,6 +348,11 @@ def _dimension_trials(
         ga_times: list[float] = []
         ga_wins = 0
 
+        if ga_params["max_stall_gen"] == 0:
+            max_stall_gen = estimate_max_stall_gen(size, size)
+        else:
+            max_stall_gen = ga_params["max_stall_gen"]
+
         for r in range(r_count):
             problem = _generate_task_by_size(size, params, seed=5000 + size * 100 + r)
 
@@ -290,7 +360,7 @@ def _dimension_trials(
             ga = genetic_solve(
                 problem,
                 population_size=ga_params["population_size"],
-                max_stall_gen=ga_params["max_stall_gen"],
+                max_stall_gen=max_stall_gen,
                 crossover_prob=ga_params["crossover_prob"],
                 mutation_prob=ga_params["mutation_prob"],
                 tournament_size=ga_params["tournament_size"],
@@ -314,6 +384,7 @@ def _dimension_trials(
 
         row = {
             "N": size,
+            "max_stall_gen": max_stall_gen,
             "avg_greedy_cost": round(statistics.mean(greedy_costs), 6),
             "avg_ga_cost": round(statistics.mean(ga_costs), 6),
             "avg_gap_percent": round(statistics.mean(gaps), 6),
@@ -338,11 +409,14 @@ def dimension_time_experiment() -> None:
     def row_printer(row: dict) -> None:
         print(
             f"{row['N']:<4} "
+            f"{row['max_stall_gen']:<13} "
             f"{row['avg_greedy_time_sec']:<20.6f} "
             f"{row['avg_ga_time_sec']:<15.6f}"
         )
 
-    rows, csv_path = _dimension_trials("time", header, row_printer, "experiment_3_dimension_time")
+    rows, csv_path = _dimension_trials(
+        "time", header, row_printer, "experiment_3_dimension_time"
+    )
 
     if csv_path is not None:
         base = csv_path.with_suffix("")
@@ -366,12 +440,15 @@ def dimension_accuracy_experiment() -> None:
     print("\nЕксперимент 4: вплив розмірності задачі на точність алгоритмів")
 
     def header() -> None:
-        print("\nN    avg Greedy ЦФ   avg GA ЦФ       gap %, avg     win-rate GA")
-        print("-" * 72)
+        print(
+            "\nN    MaxStallGen   avg Greedy ЦФ   avg GA ЦФ       gap %, avg     win-rate GA"
+        )
+        print("-" * 88)
 
     def row_printer(row: dict) -> None:
         print(
             f"{row['N']:<4} "
+            f"{row['max_stall_gen']:<13} "
             f"{row['avg_greedy_cost']:<15.2f} "
             f"{row['avg_ga_cost']:<15.2f} "
             f"{row['avg_gap_percent']:<14.2f} "

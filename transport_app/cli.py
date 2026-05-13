@@ -4,12 +4,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .experiments import experiments_menu
-from .formatting import Color, print_header, print_problem, print_solution, print_solutions_summary
+from .formatting import (
+    Color,
+    print_header,
+    print_problem,
+    print_solution,
+    print_solutions_summary,
+)
 from .generator import generate_problem
 from .input_utils import input_problem_manually, read_float, read_int
 from .io_utils import load_problem, save_problem, save_solution
 from .models import ProblemInstance, SolveResult
-from .solvers.genetic import genetic_solve
+from .solvers.genetic import genetic_solve, estimate_max_stall_gen
 from .solvers.greedy import greedy_solve
 from .plotting import save_ga_convergence_plot
 
@@ -25,6 +31,17 @@ def _status_line(state: AppState) -> None:
         print(f"{Color.RED}Немає даних.{Color.RESET}")
     else:
         print(f"{Color.GREEN}Задача задана.{Color.RESET}")
+
+
+def _print_recommended_max_stall(m: int, n: int) -> int:
+    recommended = estimate_max_stall_gen(m, n)
+
+    print(
+        "Рекомендоване значення MaxStallGen "
+        f"(за формулою α·(m+n)·log₂(m+n)): {recommended}"
+    )
+
+    return recommended
 
 
 def show_main_menu(state: AppState) -> None:
@@ -52,53 +69,78 @@ def input_data_menu(state: AppState) -> None:
 
     choice = input("Ваш вибір: ").strip()
 
-    if choice == "1":
-        state.problem = input_problem_manually()
-        state.results.clear()
-        print(f"{Color.GREEN}Задачу успішно введено.{Color.RESET}")
+    match choice:
+        case "":
+            return
 
-    elif choice == "2":
-        path = input("Шлях до JSON-файлу: ").strip()
-        state.problem = load_problem(path)
-        state.results.clear()
-        print(f"{Color.GREEN}Задачу успішно зчитано з файлу.{Color.RESET}")
+        case "1":
+            state.problem = input_problem_manually()
+            state.results.clear()
 
-    elif choice == "3":
-        m = read_int("Кількість постачальників m", 1, 3)
-        n = read_int("Кількість споживачів n", 1, 4)
-        k = read_int("Кількість режимів потужності k", 1, 4)
-        l = read_int("Кількість рівнів попиту l", 1, 4)
+            print(f"{Color.GREEN}Задачу успішно введено.{Color.RESET}")
+            print()
+            _print_recommended_max_stall(state.problem.m, state.problem.n)
 
-        a_mean = read_int("a_сер: середнє значення потужностей", 1, 200)
-        a_delta = read_int("Δa: напівінтервал потужностей", 0, 50)
-        d_mean = read_int("d_сер: середнє значення попиту", 1, 150)
-        d_delta = read_int("Δd: напівінтервал попиту", 0, 40)
-        t_mean = read_int("t_сер: середнє значення транспортних витрат", 1, 10)
-        t_delta = read_int("Δt: напівінтервал транспортних витрат", 0, 5)
-        seed_raw = input("Seed для генерації [можна пропустити]: ").strip()
-        seed = int(seed_raw) if seed_raw else None
+        case "2":
+            path = input("Шлях до JSON-файлу [data/sample_problem.json]: ").strip()
+            path = path or "data/sample_problem.json"
 
-        state.problem = generate_problem(
-            m=m,
-            n=n,
-            k=k,
-            l=l,
-            a_mean=a_mean,
-            a_delta=a_delta,
-            d_mean=d_mean,
-            d_delta=d_delta,
-            t_mean=t_mean,
-            t_delta=t_delta,
-            seed=seed,
-        )
-        state.results.clear()
-        print(f"{Color.GREEN}Задачу успішно згенеровано.{Color.RESET}")
+            state.problem = load_problem(path)
+            state.results.clear()
 
-    elif choice == "0":
-        return
+            print(f"{Color.GREEN}Задачу успішно зчитано з файлу.{Color.RESET}")
+            print()
+            _print_recommended_max_stall(state.problem.m, state.problem.n)
 
-    else:
-        print(f"{Color.RED}Невідомий пункт меню.{Color.RESET}")
+        case "3":
+            m = read_int("Кількість постачальників m", 1, 3)
+            n = read_int("Кількість споживачів n", 1, 4)
+
+            print()
+            _print_recommended_max_stall(m, n)
+            print(
+                "Це значення буде запропоновано пізніше під час запуску генетичного алгоритму."
+            )
+            print()
+
+            k = read_int("Кількість режимів потужності k", 1, 4)
+            l = read_int("Кількість рівнів попиту l", 1, 4)
+
+            a_mean = read_int("a_сер: середнє значення потужностей", 1, 200)
+            a_delta = read_int("Δa: напівінтервал потужностей", 0, 50)
+            d_mean = read_int("d_сер: середнє значення попиту", 1, 150)
+            d_delta = read_int("Δd: напівінтервал попиту", 0, 40)
+            t_mean = read_int("t_сер: середнє значення транспортних витрат", 1, 10)
+            t_delta = read_int("Δt: напівінтервал транспортних витрат", 0, 5)
+
+            seed_raw = input("Seed для генерації [можна пропустити]: ").strip()
+            seed = int(seed_raw) if seed_raw else None
+
+            state.problem = generate_problem(
+                m=m,
+                n=n,
+                k=k,
+                l=l,
+                a_mean=a_mean,
+                a_delta=a_delta,
+                d_mean=d_mean,
+                d_delta=d_delta,
+                t_mean=t_mean,
+                t_delta=t_delta,
+                seed=seed,
+            )
+
+            state.results.clear()
+
+            print(f"{Color.GREEN}Задачу успішно згенеровано.{Color.RESET}")
+            print()
+            _print_recommended_max_stall(state.problem.m, state.problem.n)
+
+        case "0":
+            return
+
+        case _:
+            print(f"{Color.RED}Невідомий пункт меню.{Color.RESET}")
 
 
 def solve_all_algorithms(state: AppState) -> None:
@@ -116,8 +158,9 @@ def solve_all_algorithms(state: AppState) -> None:
     print(f"Результат роботи жадібного алгоритму: значення ЦФ {greedy.total_cost:.4f}.")
 
     print("\nПараметри генетичного алгоритму")
+    recommended_max_stall = _print_recommended_max_stall(state.problem.m, state.problem.n)
     population_size = read_int("Розмір популяції", 2, 40)
-    max_stall_gen = read_int("MaxStallGen", 1, 30)
+    max_stall_gen = read_int("MaxStallGen", 1, recommended_max_stall)
     crossover_prob = read_float("Ймовірність кросовера", 0.0, 0.8)
     mutation_prob = read_float("Ймовірність мутації", 0.0, 0.15)
     tournament_size = read_int("Розмір турніру", 1, 3)

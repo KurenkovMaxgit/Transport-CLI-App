@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import random
 import time
+import math
 
 from ..evaluator import solve_for_modes
 from ..models import ProblemInstance, SolveResult
+from typing import Optional
 
+ALPHA_MAX_STALL = 0.9
 
 def _random_chromosome(problem: ProblemInstance, rng: random.Random) -> list[int]:
     supply_part = [rng.randrange(problem.k) for _ in range(problem.m)]
@@ -83,10 +86,21 @@ def _mutate(
     return child
 
 
+def estimate_max_stall_gen(m: int, n: int, alpha: float = ALPHA_MAX_STALL) -> int:
+    size = m + n
+
+    if size <= 1:
+        return 5
+
+    value = alpha * size * math.log2(size)
+
+    return max(5, int(round(value)))
+
+
 def genetic_solve(
     problem: ProblemInstance,
     population_size: int = 40,
-    max_stall_gen: int = 30,
+    max_stall_gen: Optional[int] = None,
     crossover_prob: float = 0.8,
     mutation_prob: float = 0.15,
     tournament_size: int = 3,
@@ -95,6 +109,9 @@ def genetic_solve(
     start_total = time.perf_counter()
     rng = random.Random(seed)
     cache: dict[tuple[int, ...], SolveResult] = {}
+
+    if max_stall_gen is None:
+        max_stall_gen = estimate_max_stall_gen(problem.m, problem.n)
 
     population = [_random_chromosome(problem, rng) for _ in range(population_size)]
 
