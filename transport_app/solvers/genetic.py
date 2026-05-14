@@ -8,7 +8,20 @@ from ..evaluator import solve_for_modes
 from ..models import ProblemInstance, SolveResult
 from typing import Optional
 
-ALPHA_MAX_STALL = 0.9
+ALPHA_MAX_STALL = 0.6
+
+def get_alpha_max_stall() -> float:
+    return ALPHA_MAX_STALL
+
+
+def set_alpha_max_stall(alpha: float) -> None:
+    global ALPHA_MAX_STALL
+
+    if alpha <= 0:
+        raise ValueError("alpha має бути додатним числом.")
+
+    ALPHA_MAX_STALL = alpha
+
 
 def _random_chromosome(problem: ProblemInstance, rng: random.Random) -> list[int]:
     supply_part = [rng.randrange(problem.k) for _ in range(problem.m)]
@@ -86,7 +99,14 @@ def _mutate(
     return child
 
 
-def estimate_max_stall_gen(m: int, n: int, alpha: float = ALPHA_MAX_STALL) -> int:
+def estimate_max_stall_gen(
+    m: int,
+    n: int,
+    alpha: float | None = None,
+) -> int:
+    if alpha is None:
+        alpha = ALPHA_MAX_STALL
+
     size = m + n
 
     if size <= 1:
