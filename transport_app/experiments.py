@@ -9,9 +9,15 @@ from typing import Callable
 from .generator import generate_problem
 from .input_utils import read_float, read_int
 from .models import ProblemInstance
-from .solvers.genetic import genetic_solve, estimate_max_stall_gen
-from .solvers.greedy import greedy_solve
 from .plotting import save_single_series_plot, save_two_series_plot
+from .solvers.genetic import (
+    genetic_solve,
+    estimate_max_stall_gen,
+    get_alpha_max_stall,
+    set_alpha_max_stall,
+)
+from .solvers.greedy import greedy_solve
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -31,12 +37,32 @@ def _ask_generator_params() -> dict:
     }
 
 
-def _print_recommended_max_stall_for_dimension(size: int) -> int:
-    recommended = estimate_max_stall_gen(size, size)
+def _ask_alpha_for_max_stall() -> float:
+    current_alpha = get_alpha_max_stall()
+
+    alpha = read_float(
+        "alpha для автоматичного MaxStallGen",
+        0.01,
+        current_alpha,
+    )
+
+    set_alpha_max_stall(alpha)
+    print(f"Для поточного запуску програми використовується alpha = {alpha}")
+
+    return alpha
+
+
+def _print_recommended_max_stall_for_dimension(
+    size: int, alpha: float | None = None
+) -> int:
+    if alpha is None:
+        alpha = get_alpha_max_stall()
+
+    recommended = estimate_max_stall_gen(size, size, alpha)
 
     print(
         f"Рекомендоване значення MaxStallGen для N={size} "
-        f"(за формулою α·(m+n)·log₂(m+n)): {recommended}"
+        f"при alpha={alpha}: {recommended}"
     )
 
     return recommended
@@ -64,7 +90,8 @@ def _ask_ga_params(
 
     if allow_auto_max_stall:
         print(
-            "Для MaxStallGen можна ввести 0, тоді значення буде автоматично рахуватися для кожної розмірності N."
+            "Для MaxStallGen можна ввести 0, тоді значення буде автоматично "
+            "рахуватися для кожної розмірності N через alpha."
         )
         max_stall_gen = read_int("MaxStallGen", 0, 0)
     else:
@@ -128,32 +155,33 @@ def _generate_task_by_size(size: int, params: dict, seed: int) -> ProblemInstanc
     )
 
 
-def _ask_dimension_experiment_params() -> tuple[int, int, int, dict, int, dict]:
+def _ask_dimension_experiment_params() -> tuple[int, int, int, dict, int, dict, float]:
     n_from = read_int("Початкова розмірність N, де m=n=N", 1, 3)
     n_to = read_int("Кінцева розмірність N", n_from, 8)
     step = read_int("Крок", 1, 1)
 
-    print()
-    _print_recommended_max_stall_for_dimension(n_from)
+    alpha = _ask_alpha_for_max_stall()
 
+    print()
+    _print_recommended_max_stall_for_dimension(n_from, alpha)
     if n_to != n_from:
-        _print_recommended_max_stall_for_dimension(n_to)
+        _print_recommended_max_stall_for_dimension(n_to, alpha)
 
     generator_params = _ask_generator_params()
     r_count = read_int("Кількість задач для кожної розмірності R", 1, 5)
 
-    ga_params = _ask_ga_params(
-        default_max_stall_gen=0,
-        allow_auto_max_stall=True,
-    )
+    ga_params = _ask_ga_params(default_max_stall_gen=0, allow_auto_max_stall=True)
 
-    return n_from, n_to, step, generator_params, r_count, ga_params
+    return n_from, n_to, step, generator_params, r_count, ga_params, alpha
 
 
 def max_stall_experiment() -> None:
     print("\nЕксперимент 1: визначення параметра умови завершення MaxStallGen")
+
     size = read_int("Розмірність задачі N, де m=n=N", 1, 5)
-    recommended_max_stall = _print_recommended_max_stall_for_dimension(size)
+    alpha = _ask_alpha_for_max_stall()
+    recommended_max_stall = _print_recommended_max_stall_for_dimension(size, alpha)
+
     params = _ask_generator_params()
     r_count = read_int("Кількість задач у вибірці R", 1, 5)
 
@@ -197,6 +225,7 @@ def max_stall_experiment() -> None:
 
         row = {
             "N": size,
+            "alpha": alpha,
             "recommended_max_stall_gen": recommended_max_stall,
             "max_stall_gen": max_stall_gen,
             "avg_cost": round(statistics.mean(costs), 6),
@@ -205,6 +234,7 @@ def max_stall_experiment() -> None:
             "avg_time_sec": round(statistics.mean(times), 6),
         }
         rows.append(row)
+
         print(
             f"{max_stall_gen:<13} "
             f"{row['avg_cost']:<13.2f} "
@@ -250,8 +280,11 @@ def max_stall_experiment() -> None:
 
 def mutation_experiment() -> None:
     print("\nЕксперимент 2: вплив ймовірності мутації на ефективність ГА")
+
     size = read_int("Розмірність задачі N, де m=n=N", 1, 5)
-    recommended_max_stall = _print_recommended_max_stall_for_dimension(size)
+    alpha = _ask_alpha_for_max_stall()
+    recommended_max_stall = _print_recommended_max_stall_for_dimension(size, alpha)
+
     params = _ask_generator_params()
     r_count = read_int("Кількість задач у вибірці R", 1, 5)
 
@@ -260,13 +293,13 @@ def mutation_experiment() -> None:
     crossover_prob = read_float("Ймовірність кросовера", 0.0, 0.8)
     tournament_size = read_int("Розмір турніру", 1, 3)
 
-    raw_values = input("Значення Pm через пробіл [0.05 0.1 0.15 0.2 0.3]: ").strip()
-    mutation_values = _parse_float_values(raw_values, [0.05, 0.10, 0.15, 0.20, 0.30])
+    raw_values = input("Значення Pm через пробіл [0.05 0.1 0.15 0.2 0.3 0.4 0.5]: ").strip()
+    mutation_values = _parse_float_values(raw_values, [0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50])
 
     rows: list[dict] = []
 
-    print("\nPm        avg ЦФ        std ЦФ        avg time, s")
-    print("-" * 52)
+    print("\nPm        MaxStallGen   avg ЦФ        std ЦФ        avg time, s")
+    print("-" * 70)
 
     for mutation_prob in mutation_values:
         costs: list[float] = []
@@ -288,6 +321,7 @@ def mutation_experiment() -> None:
 
         row = {
             "N": size,
+            "alpha": alpha,
             "recommended_max_stall_gen": recommended_max_stall,
             "max_stall_gen": max_stall_gen,
             "mutation_prob": mutation_prob,
@@ -296,8 +330,10 @@ def mutation_experiment() -> None:
             "avg_time_sec": round(statistics.mean(times), 6),
         }
         rows.append(row)
+
         print(
             f"{mutation_prob:<9.2f} "
+            f"{max_stall_gen:<13} "
             f"{row['avg_cost']:<13.2f} "
             f"{row['std_cost']:<13.2f} "
             f"{row['avg_time_sec']:<13.6f}"
@@ -330,12 +366,13 @@ def mutation_experiment() -> None:
 
 
 def _dimension_trials(
-    metric_mode: str,
     print_header: Callable[[], None],
     print_row: Callable[[dict], None],
     filename_prefix: str,
 ) -> tuple[list[dict], Path | None]:
-    n_from, n_to, step, params, r_count, ga_params = _ask_dimension_experiment_params()
+    n_from, n_to, step, params, r_count, ga_params, alpha = (
+        _ask_dimension_experiment_params()
+    )
     rows: list[dict] = []
 
     print_header()
@@ -349,7 +386,7 @@ def _dimension_trials(
         ga_wins = 0
 
         if ga_params["max_stall_gen"] == 0:
-            max_stall_gen = estimate_max_stall_gen(size, size)
+            max_stall_gen = estimate_max_stall_gen(size, size, alpha)
         else:
             max_stall_gen = ga_params["max_stall_gen"]
 
@@ -384,6 +421,7 @@ def _dimension_trials(
 
         row = {
             "N": size,
+            "alpha": alpha,
             "max_stall_gen": max_stall_gen,
             "avg_greedy_cost": round(statistics.mean(greedy_costs), 6),
             "avg_ga_cost": round(statistics.mean(ga_costs), 6),
@@ -403,19 +441,20 @@ def dimension_time_experiment() -> None:
     print("\nЕксперимент 3: вплив розмірності задачі на час роботи алгоритмів")
 
     def header() -> None:
-        print("\nN    MaxStallGen   avg time Greedy, s   avg time GA, s")
-        print("-" * 62)
+        print("\nN    alpha   MaxStallGen   avg time Greedy, s   avg time GA, s")
+        print("-" * 76)
 
     def row_printer(row: dict) -> None:
         print(
             f"{row['N']:<4} "
+            f"{row['alpha']:<7.2f} "
             f"{row['max_stall_gen']:<13} "
             f"{row['avg_greedy_time_sec']:<20.6f} "
             f"{row['avg_ga_time_sec']:<15.6f}"
         )
 
     rows, csv_path = _dimension_trials(
-        "time", header, row_printer, "experiment_3_dimension_time"
+        header, row_printer, "experiment_3_dimension_time"
     )
 
     if csv_path is not None:
@@ -441,13 +480,14 @@ def dimension_accuracy_experiment() -> None:
 
     def header() -> None:
         print(
-            "\nN    MaxStallGen   avg Greedy ЦФ   avg GA ЦФ       gap %, avg     win-rate GA"
+            "\nN    alpha   MaxStallGen   avg Greedy ЦФ   avg GA ЦФ       gap %, avg     win-rate GA"
         )
-        print("-" * 88)
+        print("-" * 98)
 
     def row_printer(row: dict) -> None:
         print(
             f"{row['N']:<4} "
+            f"{row['alpha']:<7.2f} "
             f"{row['max_stall_gen']:<13} "
             f"{row['avg_greedy_cost']:<15.2f} "
             f"{row['avg_ga_cost']:<15.2f} "
@@ -456,7 +496,7 @@ def dimension_accuracy_experiment() -> None:
         )
 
     rows, csv_path = _dimension_trials(
-        "accuracy", header, row_printer, "experiment_4_dimension_accuracy"
+        header, row_printer, "experiment_4_dimension_accuracy"
     )
 
     if csv_path is not None:
@@ -495,6 +535,196 @@ def dimension_accuracy_experiment() -> None:
         print("Графіки експерименту збережено в папку output.")
 
 
+def alpha_max_stall_experiment() -> None:
+    print(
+        "\nЕксперимент 5: дослідження коефіцієнта alpha для автоматичного MaxStallGen"
+    )
+
+    raw_dimensions = input("Значення розмірностей N через пробіл [3 5 7 10]: ").strip()
+    dimensions = _parse_int_values(raw_dimensions, [3, 5, 7, 10])
+    dimensions = sorted(set(value for value in dimensions if value > 0))
+
+    if not dimensions:
+        print("Список розмірностей порожній.")
+        return
+
+    raw_alpha_values = input(
+        "Значення alpha через пробіл [0.1 0.15 0.2 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]: "
+    ).strip()
+    alpha_values = _parse_float_values(
+        raw_alpha_values, [0.1, 0.15, 0.2, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    )
+    alpha_values = sorted(set(value for value in alpha_values if value > 0))
+
+    if not alpha_values:
+        print("Список значень alpha порожній.")
+        return
+
+    epsilon_percent = read_float(
+        "Допустиме відхилення від найкращого результату, %", 0.0, 0.0
+    )
+
+    params = _ask_generator_params()
+    r_count = read_int("Кількість задач для кожної пари (N, alpha) R", 1, 5)
+
+    print("\nПараметри генетичного алгоритму")
+    population_size = read_int("Розмір популяції", 2, 40)
+    crossover_prob = read_float("Ймовірність кросовера", 0.0, 0.8)
+    mutation_prob = read_float("Ймовірність мутації", 0.0, 0.15)
+    tournament_size = read_int("Розмір турніру", 1, 3)
+
+    rows: list[dict] = []
+
+    print("\nПочаток експерименту alpha.")
+
+    for size in dimensions:
+        print(f"\nРозмірність N = {size}")
+
+        for alpha in alpha_values:
+            max_stall_gen = estimate_max_stall_gen(size, size, alpha)
+            costs: list[float] = []
+            times: list[float] = []
+            generations: list[float] = []
+
+            for r in range(r_count):
+                problem_seed = 7000 + size * 100 + r
+                ga_seed = 8000 + size * 100 + r
+                problem = _generate_task_by_size(size, params, seed=problem_seed)
+
+                result = genetic_solve(
+                    problem,
+                    population_size=population_size,
+                    max_stall_gen=max_stall_gen,
+                    crossover_prob=crossover_prob,
+                    mutation_prob=mutation_prob,
+                    tournament_size=tournament_size,
+                    seed=ga_seed,
+                )
+
+                costs.append(result.total_cost)
+                times.append(result.runtime_sec)
+                generations.append(float(result.extra.get("generations", 0)))
+
+            row = {
+                "N": size,
+                "alpha": round(alpha, 6),
+                "max_stall_gen": max_stall_gen,
+                "avg_cost": round(statistics.mean(costs), 6),
+                "std_cost": round(
+                    statistics.pstdev(costs) if len(costs) > 1 else 0.0, 6
+                ),
+                "avg_time_sec": round(statistics.mean(times), 6),
+                "avg_generations": round(statistics.mean(generations), 6),
+                "gap_to_best_percent": 0.0,
+                "recommended_for_N": "no",
+            }
+            rows.append(row)
+
+            print(
+                f"alpha={alpha:<5.2f} "
+                f"MaxStallGen={max_stall_gen:<4} "
+                f"avg ЦФ={row['avg_cost']:<12.2f} "
+                f"avg time={row['avg_time_sec']:<10.6f}"
+            )
+
+    recommended_by_dimension: dict[int, float] = {}
+
+    for size in dimensions:
+        rows_for_size = [row for row in rows if row["N"] == size]
+
+        if not rows_for_size:
+            continue
+
+        best_cost = min(row["avg_cost"] for row in rows_for_size)
+
+        for row in rows_for_size:
+            if best_cost != 0:
+                row["gap_to_best_percent"] = round(
+                    (row["avg_cost"] - best_cost) / best_cost * 100, 6
+                )
+            else:
+                row["gap_to_best_percent"] = 0.0
+
+        acceptable_rows = [
+            row
+            for row in rows_for_size
+            if row["gap_to_best_percent"] <= epsilon_percent
+        ]
+
+        if acceptable_rows:
+            chosen_row = min(
+                acceptable_rows, key=lambda row: (row["alpha"], row["avg_time_sec"])
+            )
+        else:
+            chosen_row = min(
+                rows_for_size, key=lambda row: (row["avg_cost"], row["avg_time_sec"])
+            )
+
+        chosen_row["recommended_for_N"] = "yes"
+        recommended_by_dimension[size] = chosen_row["alpha"]
+
+    if recommended_by_dimension:
+        final_alpha = max(recommended_by_dimension.values())
+    else:
+        final_alpha = alpha_values[0]
+
+    print("\nПідсумкова таблиця експерименту alpha")
+    print(
+        "\nN    alpha   MaxStallGen   avg ЦФ        gap to best, %   avg time, s   avg generations   recommended"
+    )
+    print("-" * 110)
+
+    for row in rows:
+        print(
+            f"{row['N']:<4} "
+            f"{row['alpha']:<7.2f} "
+            f"{row['max_stall_gen']:<13} "
+            f"{row['avg_cost']:<13.2f} "
+            f"{row['gap_to_best_percent']:<16.2f} "
+            f"{row['avg_time_sec']:<13.6f} "
+            f"{row['avg_generations']:<17.2f} "
+            f"{row['recommended_for_N']}"
+        )
+
+    print("\nРекомендовані alpha за розмірностями:")
+    for size, alpha in recommended_by_dimension.items():
+        print(f"N = {size}: alpha = {alpha}")
+
+    print(f"\nЗагальна рекомендована константа ALPHA_MAX_STALL = {final_alpha}")
+
+    set_alpha_max_stall(final_alpha)
+    print(
+        f"Глобальне значення alpha для поточного запуску програми оновлено: {final_alpha}"
+    )
+
+    csv_path = _save_csv("experiment_5_alpha_max_stall", rows)
+
+    if csv_path is not None:
+        base = csv_path.with_suffix("")
+
+        for size in dimensions:
+            rows_for_size = [row for row in rows if row["N"] == size]
+
+            save_single_series_plot(
+                x=[row["alpha"] for row in rows_for_size],
+                y=[row["avg_cost"] for row in rows_for_size],
+                xlabel="alpha",
+                ylabel="Середнє значення ЦФ",
+                title=f"Вплив alpha на середнє значення ЦФ, N={size}",
+                path=base.with_name(base.name + f"_N{size}_cost.png"),
+            )
+            save_single_series_plot(
+                x=[row["alpha"] for row in rows_for_size],
+                y=[row["avg_time_sec"] for row in rows_for_size],
+                xlabel="alpha",
+                ylabel="Середній час, с",
+                title=f"Вплив alpha на час роботи ГА, N={size}",
+                path=base.with_name(base.name + f"_N{size}_time.png"),
+            )
+            
+        print("CSV та графіки експерименту alpha збережено в папку output.")
+
+
 def experiments_menu() -> None:
     while True:
         print("\nПроведення експериментів")
@@ -502,6 +732,7 @@ def experiments_menu() -> None:
         print("2 - Дослідити вплив ймовірності мутації")
         print("3 - Дослідити вплив розмірності задачі на час роботи")
         print("4 - Дослідити вплив розмірності задачі на точність")
+        print("5 - Дослідити коефіцієнт alpha для автоматичного MaxStallGen")
         print("0 - Повернутися в головне меню")
         choice = input("Ваш вибір: ").strip()
 
@@ -517,6 +748,8 @@ def experiments_menu() -> None:
                     dimension_time_experiment()
                 case "4":
                     dimension_accuracy_experiment()
+                case "5":
+                    alpha_max_stall_experiment()
                 case "0":
                     return
                 case _:

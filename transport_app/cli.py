@@ -150,7 +150,7 @@ def solve_all_algorithms(state: AppState) -> None:
         )
         return
 
-    print_header("Розв'язок задачі всіма алгоритмами")
+    print_header("Розв'язання задачі всіма алгоритмами")
 
     print("Запускається жадібний алгоритм...")
     greedy = greedy_solve(state.problem)
